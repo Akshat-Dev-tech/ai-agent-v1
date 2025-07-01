@@ -15,10 +15,11 @@ load_dotenv()
 # response = llm2.invoke("What is the capital of France?")
 # print(response)
 
-
-# llm_ollama = OllamaLLM(model="llama2")
-# response = llm_ollama.invoke("What is the capital of France?")
-# print("Ollama Response:", response)
+# ollama pull llama3
+# ollama run llama3
+llm_ollama = OllamaLLM(model="llama3")
+response = llm_ollama.invoke("What is the capital of France?")
+print("Ollama Response:", response)
 
 
 
