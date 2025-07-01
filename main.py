@@ -1,68 +1,45 @@
+# main.py
+import os
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-# from langchain_ollama import OllamaLLM
-from langchain_ollama import ChatOllama 
+from pydantic import BaseModel
+from langchain_ollama import ChatOllama
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
-from tools import search_tool
+from tools import search_tool, save_tool
+
 load_dotenv()
 
-#gpt model
-# llm1 = ChatOpenAI(model="gpt-3.5-turbo")
-# response = llm1.invoke("What is the capital of France?")
-# print("OpenAI Response:", response)
-
-# Use the correct Claude model name
-# llm2 = ChatAnthropic(model="claude-3-sonnet-20240229")
-# response = llm2.invoke("What is the capital of France?")
-# print(response)
-
+# Response schema
 class Response(BaseModel):
-    topic:str
-    summary:str
+    topic: str
+    summary: str
     sources: list[str]
     tools_used: list[str]
 
+# Initialize tool-capable LLM
+llm = ChatOllama(model="llama3.1:8b", temperature=0)
+parser = PydanticOutputParser(pydantic_object=Response)
 
-# ollama pull llama3
-# ollama run llama3
-llm_ollama = ChatOllama(model="llama3.1:8b")
-parser=PydanticOutputParser(pydantic_object=Response)
+# Agent prompt with explicit instructions
+prompt = ChatPromptTemplate.from_messages([
+    ("system", (
+        "You are a research assistant. "
+        "When asked, use **search** to fetch info and **save_text_to_file** to save your summary. "
+        "Output must be JSON matching the schema:\n{format_instructions}"
+    )),
+    ("placeholder", "{chat_history}"),
+    ("human", "{query}"),
+    ("placeholder", "{agent_scratchpad}")
+]).partial(format_instructions=parser.get_format_instructions())
 
-# In format_instructions will pass the format for the output which is defined in Response class
-# This will be used to format the output of the agent -> partial(format_instructions=parser.get_format_instructions())
+# Build agent
+agent = create_tool_calling_agent(llm=llm, prompt=prompt, tools=[search_tool, save_tool])
+executor = AgentExecutor(agent=agent, tools=[search_tool, save_tool], verbose=True)
 
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """
-            You are a research assistant that will help generate a research paper.
-            Answer the user query and use neccessary tools. 
-            Wrap the output in this format and provide no other text\n{format_instructions}
-            """,
-        ),
-        ("placeholder", "{chat_history}"), #autofill this value
-        ("human", "{query}"), #passed from the user
-        ("placeholder", "{agent_scratchpad}"), #autofill this value
-    ]
-).partial(format_instructions=parser.get_format_instructions())
-tools = [search_tool]
-agent = create_tool_calling_agent(
-    llm=llm_ollama,
-    prompt=prompt,
-    tools=tools
-)
-
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-raw_query = "Tell me about sharks?"
-response = agent_executor.invoke({"query": raw_query, "chat_history": []})
-print("Ollama Response:",response)
-
-
-# response = llm_ollama.invoke("What is the capital of France?")
-# print("Ollama Response:", response)
-
+# Run the agent
+response = executor.invoke({
+    "query": "Tell me about sharks and save the data.",
+    "chat_history": []
+})
+print("Agent Response:\n", response)
